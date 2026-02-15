@@ -219,9 +219,13 @@ func createCodexAuthProvider() (LLMProvider, error) {
 	return NewCodexProviderWithTokenSource(cred.AccessToken, cred.AccountID, createCodexTokenSource()), nil
 }
 
-func CreateProvider(cfg *config.Config) (LLMProvider, error) {
+func CreateProvider(cfg *config.Config, bus *bus.MessageBus) (LLMProvider, error) {
 	model := cfg.Agents.Defaults.Model
 	providerName := strings.ToLower(cfg.Agents.Defaults.Provider)
+
+	if cfg.GeminiCLI.Enabled || model == "gemini-cli" {
+		return NewGeminiCLIProvider(cfg.GeminiCLI, bus), nil
+	}
 
 	var apiKey, apiBase, proxy string
 

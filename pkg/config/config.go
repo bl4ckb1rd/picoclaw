@@ -51,7 +51,16 @@ type Config struct {
 	Tools     ToolsConfig     `json:"tools"`
 	Heartbeat HeartbeatConfig `json:"heartbeat"`
 	Devices   DevicesConfig   `json:"devices"`
+	GeminiCLI GeminiCLIConfig `json:"gemini_cli"`
 	mu        sync.RWMutex
+}
+
+type GeminiCLIConfig struct {
+	Enabled       bool   `json:"enabled" env:"PICOCLAW_GEMINI_CLI_ENABLED"`
+	BinaryPath    string `json:"binary_path" env:"PICOCLAW_GEMINI_CLI_BINARY_PATH"`
+	WorkingDir    string `json:"working_dir" env:"PICOCLAW_GEMINI_CLI_WORKING_DIR"`
+	YoloMode      bool   `json:"yolo_mode" env:"PICOCLAW_GEMINI_CLI_YOLO_MODE"`
+	ResumeSession bool   `json:"resume_session" env:"PICOCLAW_GEMINI_CLI_RESUME_SESSION"`
 }
 
 type AgentsConfig struct {
@@ -350,6 +359,13 @@ func DefaultConfig() *Config {
 		Devices: DevicesConfig{
 			Enabled:    false,
 			MonitorUSB: true,
+		},
+		GeminiCLI: GeminiCLIConfig{
+			Enabled:       false,
+			BinaryPath:    "gemini",
+			WorkingDir:    "",
+			YoloMode:      true,
+			ResumeSession: true,
 		},
 	}
 }
