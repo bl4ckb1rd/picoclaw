@@ -436,29 +436,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 				"max":       al.maxIterations,
 			})
 
-		// Build tool definitions
-		providerToolDefs := al.tools.ToProviderDefs()
-
-		// Log LLM request details
-		logger.DebugCF("agent", "LLM request",
-			map[string]interface{}{
-				"iteration":         iteration,
-				"model":             al.model,
-				"messages_count":    len(messages),
-				"tools_count":       len(providerToolDefs),
-				"max_tokens":        8192,
-				"temperature":       0.7,
-				"system_prompt_len": len(messages[0].Content),
-			})
-
-		// Log full messages (detailed)
-		logger.DebugCF("agent", "Full LLM request",
-			map[string]interface{}{
-				"iteration":     iteration,
-				"messages_json": formatMessagesForLog(messages),
-				"tools_json":    formatToolsForLog(providerToolDefs),
-			})
-
+		// Call LLM
 		var response *providers.LLMResponse
 		var err error
 
@@ -468,6 +446,9 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			response, err = al.provider.Chat(ctx, messages, providerToolDefs, al.model, map[string]interface{}{
 				"max_tokens":  8192,
 				"temperature": 0.7,
+				"session_key": opts.SessionKey,
+				"channel":     opts.Channel,
+				"chat_id":     opts.ChatID,
 			})
 
 			if err == nil {
