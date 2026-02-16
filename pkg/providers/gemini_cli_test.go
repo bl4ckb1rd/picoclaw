@@ -65,9 +65,26 @@ echo "Mock Gemini Output for prompt: $2"
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	expected := `Mock Gemini Output for prompt: hello gemini
-`
+	expected := "Mock Gemini Output for prompt: hello gemini"
 	if resp.Content != expected {
 		t.Errorf("expected %q, got %q", expected, resp.Content)
+	}
+}
+
+func TestFilterOutput(t *testing.T) {
+	input := `YOLO mode is enabled. All tool calls will be automatically approved.
+Loaded cached credentials.
+Hook registry initialized with 0 hook entries
+Attempt 1 failed: You have exhausted your capacity...
+I will check the weather.
+pgrep: bash: line 1: pgrep: command not found
+Actual Answer`
+
+	expected := `I will check the weather.
+Actual Answer`
+
+	result := filterOutput(input)
+	if result != expected {
+		t.Errorf("expected:\n%q\ngot:\n%q", expected, result)
 	}
 }

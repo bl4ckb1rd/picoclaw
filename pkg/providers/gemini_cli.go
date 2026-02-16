@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"strings"
 
 	"github.com/sipeed/picoclaw/pkg/config"
 )
@@ -54,7 +55,7 @@ func (p *GeminiCLIProvider) Chat(ctx context.Context, messages []Message, tools 
 	}
 
 	output, err := cmd.CombinedOutput()
-	outputStr := string(output)
+	outputStr := filterOutput(string(output))
 
 	if err != nil {
 		// If exit code is non-zero, it might still have useful output (stderr)
@@ -65,6 +66,31 @@ func (p *GeminiCLIProvider) Chat(ctx context.Context, messages []Message, tools 
 		Content:      outputStr,
 		FinishReason: "stop",
 	}, nil
+}
+
+func filterOutput(output string) string {
+	lines := strings.Split(output, "\n")
+	var filtered []string
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+
+		// Filter out noisy system logs
+		if strings.HasPrefix(trimmed, "YOLO mode is enabled") ||
+			strings.HasPrefix(trimmed, "Loaded cached credentials") ||
+			strings.HasPrefix(trimmed, "Hook registry initialized") ||
+			strings.HasPrefix(trimmed, "Attempt ") && strings.Contains(trimmed, "failed") ||
+			strings.Contains(trimmed, "pgrep: command not found") {
+			continue
+		}
+
+		filtered = append(filtered, line)
+	}
+
+	return strings.Join(filtered, "\n")
 }
 
 func (p *GeminiCLIProvider) GetDefaultModel() string {
