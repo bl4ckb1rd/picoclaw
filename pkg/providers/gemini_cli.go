@@ -111,10 +111,6 @@ func (p *GeminiCLIProvider) Chat(ctx context.Context, messages []Message, tools 
 			args = append(args, "-m", selectedModel)
 		}
 
-		for _, path := range imagePaths {
-			args = append(args, "--file", path)
-		}
-
 		if p.config.ResumeSession {
 			args = append(args, "--resume", "latest")
 		}

@@ -251,8 +251,8 @@ echo "$*"
 		t.Fatal(err)
 	}
 
-	if !strings.Contains(resp.Content, "--file /tmp/test.jpg") {
-		t.Errorf("expected image path in CLI arguments, got: %q", resp.Content)
+	if strings.Contains(resp.Content, "--file") {
+		t.Errorf("did not expect --file flag, got: %q", resp.Content)
 	}
 }
 
