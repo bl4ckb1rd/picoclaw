@@ -2,6 +2,8 @@ package channels
 
 import (
 	"testing"
+
+	"github.com/sipeed/picoclaw/pkg/utils"
 )
 
 func TestSplitMessage(t *testing.T) {
@@ -39,7 +41,7 @@ func TestSplitMessage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := splitMessage(tt.text, tt.maxLen)
+			result := utils.SplitMessage(tt.text, tt.maxLen)
 			if len(result) != len(tt.expected) {
 				t.Fatalf("expected %d chunks, got %d", len(tt.expected), len(result))
 			}

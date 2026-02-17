@@ -43,7 +43,11 @@ echo "The weather is sunny"
 	}
 
 	// Channel to collect streamed thoughts
-	thoughts := make(chan string, 10)
+	type thoughtResult struct {
+		content  string
+		isThought bool
+	}
+	thoughts := make(chan thoughtResult, 10)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -54,7 +58,10 @@ echo "The weather is sunny"
 				return
 			}
 			if strings.HasPrefix(msg.Content, "💭 ") {
-				thoughts <- msg.Content
+				thoughts <- thoughtResult{
+					content:   msg.Content,
+					isThought: msg.Metadata != nil && msg.Metadata["is_thought"] == "true",
+				}
 			}
 		}
 	}()
@@ -80,8 +87,11 @@ echo "The weather is sunny"
 	for _, expected := range expectedThoughts {
 		select {
 		case got := <-thoughts:
-			if got != expected {
-				t.Errorf("expected thought %q, got %q", expected, got)
+			if got.content != expected {
+				t.Errorf("expected thought %q, got %q", expected, got.content)
+			}
+			if !got.isThought {
+				t.Errorf("expected is_thought metadata to be true for %q", expected)
 			}
 		case <-time.After(100 * time.Millisecond):
 			t.Errorf("timed out waiting for thought: %q", expected)

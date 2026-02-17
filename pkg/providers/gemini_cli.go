@@ -131,6 +131,9 @@ func (p *GeminiCLIProvider) Chat(ctx context.Context, messages []Message, tools 
 					Channel: channel,
 					ChatID:  chatID,
 					Content: "💭 " + trimmed,
+					Metadata: map[string]string{
+						"is_thought": "true",
+					},
 				})
 			}
 			continue

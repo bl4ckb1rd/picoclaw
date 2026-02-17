@@ -106,7 +106,7 @@ func (c *DiscordChannel) Send(ctx context.Context, msg bus.OutboundMessage) erro
 		return nil
 	}
 
-	chunks := splitMessage(msg.Content, 1500) // Discord has a limit of 2000 characters per message, leave 500 for natural split e.g. code blocks
+	chunks := splitDiscordMessage(msg.Content, 1500) // Discord has a limit of 2000 characters per message, leave 500 for natural split e.g. code blocks
 
 	for _, chunk := range chunks {
 		if err := c.sendChunk(ctx, channelID, chunk); err != nil {
@@ -117,9 +117,9 @@ func (c *DiscordChannel) Send(ctx context.Context, msg bus.OutboundMessage) erro
 	return nil
 }
 
-// splitMessage splits long messages into chunks, preserving code block integrity
+// splitDiscordMessage splits long messages into chunks, preserving code block integrity
 // Uses natural boundaries (newlines, spaces) and extends messages slightly to avoid breaking code blocks
-func splitMessage(content string, limit int) []string {
+func splitDiscordMessage(content string, limit int) []string {
 	var messages []string
 
 	for len(content) > 0 {

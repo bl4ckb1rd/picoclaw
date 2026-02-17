@@ -159,7 +159,9 @@ func (c *TelegramChannel) Send(ctx context.Context, msg bus.OutboundMessage) err
 
 	// Telegram limit is 4096, but we use slightly less to be safe with HTML tags
 	const maxLen = 4000
-	chunks := splitMessage(msg.Content, maxLen)
+	chunks := utils.SplitMessage(msg.Content, maxLen)
+
+	isThought := msg.Metadata != nil && msg.Metadata["is_thought"] == "true"
 
 	for i, chunk := range chunks {
 		htmlContent := markdownToTelegramHTML(chunk)
@@ -167,60 +169,50 @@ func (c *TelegramChannel) Send(ctx context.Context, msg bus.OutboundMessage) err
 		// Try to edit placeholder for the first chunk
 		if i == 0 {
 			if pID, ok := c.placeholders.Load(msg.ChatID); ok {
-				c.placeholders.Delete(msg.ChatID)
+				// If it's just a thought update, we DON'T delete the placeholder
+				// because we want to reuse it for the next thought or final answer.
+				if !isThought {
+					c.placeholders.Delete(msg.ChatID)
+				}
+
 				editMsg := tu.EditMessageText(tu.ID(chatID), pID.(int), htmlContent)
 				editMsg.ParseMode = telego.ModeHTML
 
 				if _, err = c.bot.EditMessageText(ctx, editMsg); err == nil {
+					// If it was a thought update, we are done with this chunk
+					if isThought {
+						return nil
+					}
 					continue
 				}
 				// Fallback to new message if edit fails
 			}
 		}
 
+		// If it's a thought and we couldn't edit the placeholder,
+		// we send it as a new message but update the placeholder ID so future thoughts edit THIS one.
 		tgMsg := tu.Message(tu.ID(chatID), htmlContent)
 		tgMsg.ParseMode = telego.ModeHTML
 
-		if _, err = c.bot.SendMessage(ctx, tgMsg); err != nil {
+		var sentMsg *telego.Message
+		if sentMsg, err = c.bot.SendMessage(ctx, tgMsg); err != nil {
 			logger.ErrorCF("telegram", "HTML parse failed, falling back to plain text", map[string]interface{}{
 				"error": err.Error(),
 			})
 			tgMsg.ParseMode = ""
 			tgMsg.Text = chunk
-			_, err = c.bot.SendMessage(ctx, tgMsg)
+			sentMsg, err = c.bot.SendMessage(ctx, tgMsg)
 			if err != nil {
 				return err
 			}
 		}
+
+		if isThought && i == 0 && sentMsg != nil {
+			c.placeholders.Store(msg.ChatID, sentMsg.MessageID)
+		}
 	}
 
 	return nil
-}
-
-func splitMessage(text string, maxLen int) []string {
-	if len(text) <= maxLen {
-		return []string{text}
-	}
-
-	var chunks []string
-	for len(text) > 0 {
-		if len(text) <= maxLen {
-			chunks = append(chunks, text)
-			break
-		}
-
-		// Try to find a good place to split (newline)
-		splitIdx := strings.LastIndex(text[:maxLen], "\n")
-		if splitIdx == -1 {
-			// No newline found, just split at maxLen
-			splitIdx = maxLen
-		}
-
-		chunks = append(chunks, text[:splitIdx])
-		text = strings.TrimSpace(text[splitIdx:])
-	}
-
-	return chunks
 }
 
 func (c *TelegramChannel) handleMessage(ctx context.Context, message *telego.Message) error {
