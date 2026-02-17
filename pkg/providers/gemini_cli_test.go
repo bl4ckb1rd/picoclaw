@@ -14,7 +14,7 @@ func TestGeminiCLIProvider_Chat_NoUserMessage(t *testing.T) {
 		Enabled:    true,
 		BinaryPath: "echo",
 	}
-	p := NewGeminiCLIProvider(cfg)
+	p := NewGeminiCLIProvider(cfg, nil)
 
 	messages := []Message{
 		{Role: "system", Content: "You are an assistant"},
@@ -55,7 +55,7 @@ echo "Mock Gemini Output for prompt: $2"
 		ResumeSession: true,
 		YoloMode:      true,
 	}
-	p := NewGeminiCLIProvider(cfg)
+	p := NewGeminiCLIProvider(cfg, nil)
 
 	messages := []Message{
 		{Role: "user", Content: "hello gemini"},
@@ -100,7 +100,7 @@ done
 		BinaryPath: tmpFile.Name(),
 		Model:      "gemini-2.0-flash",
 	}
-	p := NewGeminiCLIProvider(cfg)
+	p := NewGeminiCLIProvider(cfg, nil)
 
 	messages := []Message{
 		{Role: "user", Content: "hello"},

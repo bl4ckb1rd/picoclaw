@@ -399,13 +399,13 @@ func agentCmd() {
 		os.Exit(1)
 	}
 
-	provider, err := providers.CreateProvider(cfg)
+	msgBus := bus.NewMessageBus()
+	provider, err := providers.CreateProvider(cfg, msgBus)
 	if err != nil {
 		fmt.Printf("Error creating provider: %v\n", err)
 		os.Exit(1)
 	}
 
-	msgBus := bus.NewMessageBus()
 	agentLoop := agent.NewAgentLoop(cfg, msgBus, provider)
 
 	// Print agent startup info (only for interactive mode)
@@ -534,13 +534,13 @@ func gatewayCmd() {
 		os.Exit(1)
 	}
 
-	provider, err := providers.CreateProvider(cfg)
+	msgBus := bus.NewMessageBus()
+	provider, err := providers.CreateProvider(cfg, msgBus)
 	if err != nil {
 		fmt.Printf("Error creating provider: %v\n", err)
 		os.Exit(1)
 	}
 
-	msgBus := bus.NewMessageBus()
 	agentLoop := agent.NewAgentLoop(cfg, msgBus, provider)
 
 	// Print agent startup info
