@@ -219,6 +219,43 @@ func TestGeminiCLIProvider_GetDefaultModel(t *testing.T) {
 	}
 }
 
+func TestGeminiCLIProvider_Chat_Vision(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "mock-gemini-vision-*.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	// Script that echoes all arguments
+	content := `#!/bin/sh
+echo "$*"
+`
+	if _, err := tmpFile.WriteString(content); err != nil {
+		t.Fatal(err)
+	}
+	tmpFile.Close()
+	os.Chmod(tmpFile.Name(), 0755)
+
+	cfg := config.GeminiCLIConfig{
+		Enabled:    true,
+		BinaryPath: tmpFile.Name(),
+	}
+	p := NewGeminiCLIProvider(cfg, nil)
+
+	messages := []Message{
+		{Role: "user", Content: "What is in this image? [image: /tmp/test.jpg]"},
+	}
+
+	resp, err := p.Chat(context.Background(), messages, nil, "gemini-cli", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(resp.Content, "--file /tmp/test.jpg") {
+		t.Errorf("expected image path in CLI arguments, got: %q", resp.Content)
+	}
+}
+
 func TestFilterOutput(t *testing.T) {
 	input := `YOLO mode is enabled. All tool calls will be automatically approved.
 Loaded cached credentials.

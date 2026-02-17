@@ -5,12 +5,15 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/logger"
 )
+
+var imagePathRegex = regexp.MustCompile(`\[image: ([^\]]+)\]`)
 
 type GeminiCLIProvider struct {
 	config config.GeminiCLIConfig
@@ -28,18 +31,20 @@ func (p *GeminiCLIProvider) Chat(ctx context.Context, messages []Message, tools 
 	// Find the system prompt and last user message
 	var systemPrompt string
 	var lastUserMsg string
-	var history []string
+	var imagePaths []string
 
 	for _, msg := range messages {
 		if msg.Role == "system" {
 			systemPrompt = msg.Content
 		} else if msg.Role == "user" {
 			lastUserMsg = msg.Content
-			history = append(history, "User: "+msg.Content)
-		} else if msg.Role == "assistant" {
-			history = append(history, "Assistant: "+msg.Content)
-		} else if msg.Role == "tool" {
-			history = append(history, "Tool Result: "+msg.Content)
+			// Extract image paths if present in the message
+			matches := imagePathRegex.FindAllStringSubmatch(msg.Content, -1)
+			for _, match := range matches {
+				if len(match) > 1 {
+					imagePaths = append(imagePaths, match[1])
+				}
+			}
 		}
 	}
 
@@ -51,21 +56,21 @@ func (p *GeminiCLIProvider) Chat(ctx context.Context, messages []Message, tools 
 	}
 
 	// Build a composite prompt for the CLI
-	// We include the system prompt to ensure the CLI respects picoclaw rules/soul/agents.md
-	// We only include the last few history items if necessary, but gemini-cli --resume latest
-	// already handles some history. However, it doesn't know about picoclaw's system files.
 	var compositePrompt strings.Builder
 	if systemPrompt != "" {
 		compositePrompt.WriteString(systemPrompt)
 		compositePrompt.WriteString("\n\n---\n\n")
 	}
 
-	// Add recent context if it's a subagent or complex task
-	// (Gemini CLI resume might handle main thread, but subagents are independent)
 	compositePrompt.WriteString("Current Task: ")
 	compositePrompt.WriteString(lastUserMsg)
 
 	args := []string{"-p", compositePrompt.String()}
+
+	// Add images via --file flag
+	for _, path := range imagePaths {
+		args = append(args, "--file", path)
+	}
 
 	// Determine model
 	selectedModel := p.config.Model
