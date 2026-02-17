@@ -5,9 +5,90 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
 )
+
+// ... (existing tests)
+
+func TestGeminiCLIProvider_Chat_Streaming(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "mock-gemini-stream-*.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	content := `#!/bin/sh
+echo "I will search for weather"
+echo "I will execute curl"
+echo "The weather is sunny"
+`
+	if _, err := tmpFile.WriteString(content); err != nil {
+		t.Fatal(err)
+	}
+	tmpFile.Close()
+	os.Chmod(tmpFile.Name(), 0755)
+
+	msgBus := bus.NewMessageBus()
+	cfg := config.GeminiCLIConfig{
+		Enabled:    true,
+		BinaryPath: tmpFile.Name(),
+	}
+	p := NewGeminiCLIProvider(cfg, msgBus)
+
+	messages := []Message{
+		{Role: "user", Content: "weather"},
+	}
+
+	// Channel to collect streamed thoughts
+	thoughts := make(chan string, 10)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		for {
+			msg, ok := msgBus.SubscribeOutbound(ctx)
+			if !ok {
+				return
+			}
+			if strings.HasPrefix(msg.Content, "💭 ") {
+				thoughts <- msg.Content
+			}
+		}
+	}()
+
+	resp, err := p.Chat(ctx, messages, nil, "gemini-cli", map[string]interface{}{
+		"channel": "test",
+		"chat_id": "123",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify final response doesn't contain thoughts
+	if strings.Contains(resp.Content, "I will") {
+		t.Errorf("final response should not contain thoughts, got: %q", resp.Content)
+	}
+	if !strings.Contains(resp.Content, "The weather is sunny") {
+		t.Errorf("expected final answer in response, got: %q", resp.Content)
+	}
+
+	// Verify thoughts were streamed
+	expectedThoughts := []string{"💭 I will search for weather", "💭 I will execute curl"}
+	for _, expected := range expectedThoughts {
+		select {
+		case got := <-thoughts:
+			if got != expected {
+				t.Errorf("expected thought %q, got %q", expected, got)
+			}
+		case <-time.After(100 * time.Millisecond):
+			t.Errorf("timed out waiting for thought: %q", expected)
+		}
+	}
+}
+
 
 func TestGeminiCLIProvider_Chat_NoUserMessage(t *testing.T) {
 	cfg := config.GeminiCLIConfig{
@@ -119,6 +200,13 @@ done
 	resp, _ = p.Chat(context.Background(), messages, nil, "gemini-2.0-pro", nil)
 	if !strings.Contains(resp.Content, "Model used: gemini-2.0-pro") {
 		t.Errorf("expected override model, got: %q", resp.Content)
+	}
+}
+
+func TestGeminiCLIProvider_GetDefaultModel(t *testing.T) {
+	p := NewGeminiCLIProvider(config.GeminiCLIConfig{}, nil)
+	if p.GetDefaultModel() != "gemini-cli" {
+		t.Errorf("expected gemini-cli, got %q", p.GetDefaultModel())
 	}
 }
 
