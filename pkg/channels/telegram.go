@@ -223,20 +223,29 @@ func (c *TelegramChannel) handleMessage(ctx context.Context, message *telego.Mes
 		return fmt.Errorf("message is nil")
 	}
 
+	logger.DebugCF("telegram", "Received raw update", map[string]interface{}{
+		"chat_id":   message.Chat.ID,
+		"thread_id": message.MessageThreadID,
+		"text":      message.Text,
+		"from":      message.From.ID,
+	})
+
 	user := message.From
 	if user == nil {
 		return fmt.Errorf("message sender (user) is nil")
 	}
 
-	senderID := fmt.Sprintf("%d", user.ID)
+	userID := fmt.Sprintf("%d", user.ID)
+	senderID := userID
 	if user.Username != "" {
-		senderID = fmt.Sprintf("%d|%s", user.ID, user.Username)
+		senderID = fmt.Sprintf("%s|%s", userID, user.Username)
 	}
 
-	// 检查白名单，避免为被拒绝的用户下载附件
-	if !c.IsAllowed(senderID) {
+	// 检查白名单，通过数字 ID 或复合 ID 匹配
+	if !c.IsAllowed(userID) && !c.IsAllowed(senderID) {
 		logger.DebugCF("telegram", "Message rejected by allowlist", map[string]interface{}{
-			"user_id": senderID,
+			"user_id":  userID,
+			"username": user.Username,
 		})
 		return nil
 	}
@@ -385,13 +394,13 @@ func (c *TelegramChannel) handleMessage(ctx context.Context, message *telego.Mes
 
 	metadata := map[string]string{
 		"message_id": fmt.Sprintf("%d", message.MessageID),
-		"user_id":    fmt.Sprintf("%d", user.ID),
+		"user_id":    userID,
 		"username":   user.Username,
 		"first_name": user.FirstName,
 		"is_group":   fmt.Sprintf("%t", message.Chat.Type != "private"),
 	}
 
-	c.HandleMessage(fmt.Sprintf("%d", user.ID), chatIDStr, content, mediaPaths, metadata)
+	c.HandleMessage(senderID, chatIDStr, content, mediaPaths, metadata)
 	return nil
 }
 
