@@ -110,7 +110,7 @@ func (c *TelegramChannel) Start(ctx context.Context) error {
 				}
 
 				// Global Trace: Log ANY update type to see what Telegram is sending
-				logger.DebugCF("telegram", "Raw Update Received", map[string]interface{}{
+				logger.InfoCF("telegram", "Raw Update Received", map[string]interface{}{
 					"update_id": update.UpdateID,
 					"has_msg":   update.Message != nil,
 					"has_edit":  update.EditedMessage != nil,
@@ -223,7 +223,7 @@ func (c *TelegramChannel) handleMessage(ctx context.Context, message *telego.Mes
 		return fmt.Errorf("message is nil")
 	}
 
-	logger.DebugCF("telegram", "Received raw update", map[string]interface{}{
+	logger.InfoCF("telegram", "Received raw update", map[string]interface{}{
 		"chat_id":   message.Chat.ID,
 		"thread_id": message.MessageThreadID,
 		"text":      message.Text,
@@ -269,7 +269,7 @@ func (c *TelegramChannel) handleMessage(ctx context.Context, message *telego.Mes
 
 	// 检查白名单，通过数字 ID 或复合 ID 匹配
 	if !c.IsAllowed(userID) && !c.IsAllowed(senderID) {
-		logger.InfoCF("telegram", "Message rejected by allowlist", map[string]interface{}{
+		logger.WarnCF("telegram", "Message rejected by allowlist", map[string]interface{}{
 			"user_id":  userID,
 			"username": user.Username,
 			"chat_id":  chatIDStr,
