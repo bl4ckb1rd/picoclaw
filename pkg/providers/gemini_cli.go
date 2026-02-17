@@ -24,12 +24,21 @@ func NewGeminiCLIProvider(cfg config.GeminiCLIConfig, bus *bus.MessageBus) *Gemi
 }
 
 func (p *GeminiCLIProvider) Chat(ctx context.Context, messages []Message, tools []ToolDefinition, model string, options map[string]interface{}) (*LLMResponse, error) {
-	// Find the last user message
+	// Find the system prompt and last user message
+	var systemPrompt string
 	var lastUserMsg string
-	for i := len(messages) - 1; i >= 0; i-- {
-		if messages[i].Role == "user" {
-			lastUserMsg = messages[i].Content
-			break
+	var history []string
+
+	for _, msg := range messages {
+		if msg.Role == "system" {
+			systemPrompt = msg.Content
+		} else if msg.Role == "user" {
+			lastUserMsg = msg.Content
+			history = append(history, "User: "+msg.Content)
+		} else if msg.Role == "assistant" {
+			history = append(history, "Assistant: "+msg.Content)
+		} else if msg.Role == "tool" {
+			history = append(history, "Tool Result: "+msg.Content)
 		}
 	}
 
@@ -40,7 +49,22 @@ func (p *GeminiCLIProvider) Chat(ctx context.Context, messages []Message, tools 
 		}, nil
 	}
 
-	args := []string{"-p", lastUserMsg}
+	// Build a composite prompt for the CLI
+	// We include the system prompt to ensure the CLI respects picoclaw rules/soul/agents.md
+	// We only include the last few history items if necessary, but gemini-cli --resume latest
+	// already handles some history. However, it doesn't know about picoclaw's system files.
+	var compositePrompt strings.Builder
+	if systemPrompt != "" {
+		compositePrompt.WriteString(systemPrompt)
+		compositePrompt.WriteString("\n\n---\n\n")
+	}
+	
+	// Add recent context if it's a subagent or complex task
+	// (Gemini CLI resume might handle main thread, but subagents are independent)
+	compositePrompt.WriteString("Current Task: ")
+	compositePrompt.WriteString(lastUserMsg)
+
+	args := []string{"-p", compositePrompt.String()}
 
 	// Determine model
 	selectedModel := p.config.Model

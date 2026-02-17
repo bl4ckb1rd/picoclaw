@@ -41,7 +41,7 @@ func TestGeminiCLIProvider_Chat_CommandExecution(t *testing.T) {
 	defer os.Remove(tmpFile.Name())
 
 	content := `#!/bin/sh
-echo "Mock Gemini Output for prompt: $2"
+echo "$*"
 `
 	if _, err := tmpFile.WriteString(content); err != nil {
 		t.Fatal(err)
@@ -58,6 +58,7 @@ echo "Mock Gemini Output for prompt: $2"
 	p := NewGeminiCLIProvider(cfg, nil)
 
 	messages := []Message{
+		{Role: "system", Content: "IDENTITY: BOT"},
 		{Role: "user", Content: "hello gemini"},
 	}
 
@@ -66,9 +67,11 @@ echo "Mock Gemini Output for prompt: $2"
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	expected := "Mock Gemini Output for prompt: hello gemini"
-	if resp.Content != expected {
-		t.Errorf("expected %q, got %q", expected, resp.Content)
+	if !strings.Contains(resp.Content, "IDENTITY: BOT") {
+		t.Errorf("expected system prompt in output, got %q", resp.Content)
+	}
+	if !strings.Contains(resp.Content, "Current Task: hello gemini") {
+		t.Errorf("expected user message in output, got %q", resp.Content)
 	}
 }
 
