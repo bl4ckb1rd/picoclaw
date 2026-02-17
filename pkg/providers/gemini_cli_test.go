@@ -256,12 +256,11 @@ echo "$*"
 		t.Errorf("expected vision context in prompt, got: %q", resp.Content)
 	}
 
-	// Verify the positional argument exists at the end
+	// Verify the image path IS in the prompt content
 	if !strings.Contains(resp.Content, "/tmp/test.jpg") {
-		t.Errorf("expected image path as positional argument, got: %q", resp.Content)
+		t.Errorf("expected image path in prompt content, got: %q", resp.Content)
 	}
 }
-
 func TestGeminiCLIProvider_Chat_RetryAndFallback(t *testing.T) {
 	// Create a script that fails with RESOURCEEXHAUSTED until we switch to fallback
 	tmpFile, err := os.CreateTemp("", "mock-gemini-retry-*.sh")

@@ -139,11 +139,6 @@ func (p *GeminiCLIProvider) Chat(ctx context.Context, messages []Message, tools 
 			args = append(args, "--yolo")
 		}
 
-		// Try passing images as positional arguments at the end (fallback approach)
-		for _, path := range imagePaths {
-			args = append(args, path)
-		}
-
 		resp, rawOutput, err := p.runGeminiCommand(ctx, args, options)
 		lastRawOutput = rawOutput
 		if err == nil {
