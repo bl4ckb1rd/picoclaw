@@ -1,3 +1,8 @@
+---
+name: devops
+description: Expert instructions for infrastructure management, deployment, and system reliability.
+---
+
 # DevOps Skill
 
 Expert instructions for infrastructure management, deployment, and system reliability.

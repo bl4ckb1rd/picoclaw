@@ -1,3 +1,8 @@
+---
+name: software-engineer
+description: Expert instructions for professional software engineering practices and the full development lifecycle.
+---
+
 # Software Engineer Skill
 
 Expert instructions for professional software engineering practices and the full development lifecycle.

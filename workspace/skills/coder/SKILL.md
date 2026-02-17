@@ -1,3 +1,8 @@
+---
+name: coder
+description: Expert instructions for software development, refactoring, and debugging.
+---
+
 # Coder Skill
 
 Expert instructions for software development, refactoring, and debugging.

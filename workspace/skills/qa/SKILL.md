@@ -1,3 +1,8 @@
+---
+name: qa
+description: Expert instructions for rigorous testing, bug detection, and ensuring system quality.
+---
+
 # QA (Quality Assurance) Skill
 
 Expert instructions for rigorous testing, bug detection, and ensuring system quality.

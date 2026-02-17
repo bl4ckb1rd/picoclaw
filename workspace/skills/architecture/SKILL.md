@@ -1,3 +1,8 @@
+---
+name: architecture
+description: Expert instructions for high-level system design, scalability, and architectural decision-making.
+---
+
 # Architecture Skill
 
 Expert instructions for high-level system design, scalability, and architectural decision-making.
