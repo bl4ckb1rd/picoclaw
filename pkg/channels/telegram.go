@@ -144,7 +144,7 @@ func (c *TelegramChannel) Send(ctx context.Context, msg bus.OutboundMessage) err
 		return fmt.Errorf("telegram bot not running")
 	}
 
-	chatID, err := parseChatID(msg.ChatID)
+	chatID, threadID, err := parseChatID(msg.ChatID)
 	if err != nil {
 		return fmt.Errorf("invalid chat ID: %w", err)
 	}
@@ -192,6 +192,9 @@ func (c *TelegramChannel) Send(ctx context.Context, msg bus.OutboundMessage) err
 		// If it's a thought and we couldn't edit the placeholder,
 		// we send it as a new message but update the placeholder ID so future thoughts edit THIS one.
 		tgMsg := tu.Message(tu.ID(chatID), htmlContent)
+		if threadID != 0 {
+			tgMsg.MessageThreadID = threadID
+		}
 		tgMsg.ParseMode = telego.ModeHTML
 
 		var sentMsg *telego.Message
@@ -239,6 +242,10 @@ func (c *TelegramChannel) handleMessage(ctx context.Context, message *telego.Mes
 	}
 
 	chatID := message.Chat.ID
+	chatIDStr := fmt.Sprintf("%d", chatID)
+	if message.MessageThreadID != 0 {
+		chatIDStr = fmt.Sprintf("%d:%d", chatID, message.MessageThreadID)
+	}
 	c.chatIDs[senderID] = chatID
 
 	content := ""
@@ -359,7 +366,7 @@ func (c *TelegramChannel) handleMessage(ctx context.Context, message *telego.Mes
 	}
 
 	// Stop any previous thinking animation
-	chatIDStr := fmt.Sprintf("%d", chatID)
+	chatIDStr = fmt.Sprintf("%d", chatID)
 	if prevStop, ok := c.stopThinking.Load(chatIDStr); ok {
 		if cf, ok := prevStop.(*thinkingCancel); ok && cf != nil {
 			cf.Cancel()
@@ -384,7 +391,7 @@ func (c *TelegramChannel) handleMessage(ctx context.Context, message *telego.Mes
 		"is_group":   fmt.Sprintf("%t", message.Chat.Type != "private"),
 	}
 
-	c.HandleMessage(fmt.Sprintf("%d", user.ID), fmt.Sprintf("%d", chatID), content, mediaPaths, metadata)
+	c.HandleMessage(fmt.Sprintf("%d", user.ID), chatIDStr, content, mediaPaths, metadata)
 	return nil
 }
 
@@ -427,10 +434,16 @@ func (c *TelegramChannel) downloadFile(ctx context.Context, fileID, ext string) 
 	return c.downloadFileWithInfo(file, ext)
 }
 
-func parseChatID(chatIDStr string) (int64, error) {
+func parseChatID(chatIDStr string) (int64, int, error) {
+	if strings.Contains(chatIDStr, ":") {
+		var chatID int64
+		var threadID int
+		_, err := fmt.Sscanf(chatIDStr, "%d:%d", &chatID, &threadID)
+		return chatID, threadID, err
+	}
 	var id int64
 	_, err := fmt.Sscanf(chatIDStr, "%d", &id)
-	return id, err
+	return id, 0, err
 }
 
 func markdownToTelegramHTML(text string) string {

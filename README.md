@@ -601,7 +601,49 @@ PicoClaw can perform periodic tasks automatically. Create a `HEARTBEAT.md` file 
 
 The agent will read this file every 30 minutes (configurable) and execute any tasks using available tools.
 
-#### Async Tasks with Spawn
+### 🎭 Chat Personalities & Topics
+
+You can assign specific roles and models to different Telegram groups or group topics. This allows one bot to act as a Coder in one group and an SRE in another.
+
+**1. Define Personalities**
+
+```json
+{
+  "personalities": {
+    "coder": {
+      "instructions": "You are an expert developer. Focus on Go and clean code.",
+      "skills": ["coder", "quality-check"],
+      "model": "gemini-3-pro"
+    },
+    "sre": {
+      "instructions": "You are a Site Reliability Engineer managing a k3s cluster.",
+      "skills": ["devops", "k3s", "sre"],
+      "model": "gemini-2.0-flash"
+    }
+  }
+}
+```
+
+**2. Map Chat IDs to Personalities**
+
+Use the raw Chat ID or Topic ID (format `chatID:threadID`).
+
+```json
+{
+  "chat_personalities": {
+    "-100123456789": "coder",
+    "-100123456789:42": "sre",
+    "5764843": "coder"
+  }
+}
+```
+
+**Features:**
+- **Model Overrides**: Subagents in that chat will also inherit the personality's model.
+- **Dynamic Context**: The system prompt automatically updates based on the active persona.
+- **Telegram Topics Support**: Fully compatible with grouped topics.
+
+### Async Tasks with Spawn
 
 For long-running tasks (web search, API calls), use the `spawn` tool to create a **subagent**:
 
