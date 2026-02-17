@@ -38,6 +38,16 @@ func (p *GeminiCLIProvider) Chat(ctx context.Context, messages []Message, tools 
 
 	args := []string{"-p", lastUserMsg}
 
+	// Determine model
+	selectedModel := p.config.Model
+	if model != "" && model != "gemini-cli" && model != "default" {
+		selectedModel = model
+	}
+
+	if selectedModel != "" {
+		args = append(args, "-m", selectedModel)
+	}
+
 	// Handle Session
 	// Gemini CLI currently only supports "latest" or numeric index.
 	// We default to "latest" to maintain continuity for the single user.

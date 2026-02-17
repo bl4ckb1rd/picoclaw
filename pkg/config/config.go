@@ -58,6 +58,7 @@ type Config struct {
 type GeminiCLIConfig struct {
 	Enabled       bool   `json:"enabled" env:"PICOCLAW_GEMINI_CLI_ENABLED"`
 	BinaryPath    string `json:"binary_path" env:"PICOCLAW_GEMINI_CLI_BINARY_PATH"`
+	Model         string `json:"model" env:"PICOCLAW_GEMINI_CLI_MODEL"`
 	WorkingDir    string `json:"working_dir" env:"PICOCLAW_GEMINI_CLI_WORKING_DIR"`
 	YoloMode      bool   `json:"yolo_mode" env:"PICOCLAW_GEMINI_CLI_YOLO_MODE"`
 	ResumeSession bool   `json:"resume_session" env:"PICOCLAW_GEMINI_CLI_RESUME_SESSION"`

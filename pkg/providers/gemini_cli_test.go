@@ -3,6 +3,7 @@ package providers
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/sipeed/picoclaw/pkg/config"
@@ -68,6 +69,53 @@ echo "Mock Gemini Output for prompt: $2"
 	expected := "Mock Gemini Output for prompt: hello gemini"
 	if resp.Content != expected {
 		t.Errorf("expected %q, got %q", expected, resp.Content)
+	}
+}
+
+func TestGeminiCLIProvider_Chat_ModelSelection(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "mock-gemini-model-*.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	// Script that finds the argument after -m
+	content := `#!/bin/sh
+while [ $# -gt 0 ]; do
+  if [ "$1" = "-m" ]; then
+    echo "Model used: $2"
+    exit 0
+  fi
+  shift
+done
+`
+	if _, err := tmpFile.WriteString(content); err != nil {
+		t.Fatal(err)
+	}
+	tmpFile.Close()
+	os.Chmod(tmpFile.Name(), 0755)
+
+	cfg := config.GeminiCLIConfig{
+		Enabled:    true,
+		BinaryPath: tmpFile.Name(),
+		Model:      "gemini-2.0-flash",
+	}
+	p := NewGeminiCLIProvider(cfg)
+
+	messages := []Message{
+		{Role: "user", Content: "hello"},
+	}
+
+	// Case 1: Use model from config
+	resp, _ := p.Chat(context.Background(), messages, nil, "gemini-cli", nil)
+	if !strings.Contains(resp.Content, "Model used: gemini-2.0-flash") {
+		t.Errorf("expected config model, got: %q", resp.Content)
+	}
+
+	// Case 2: Override model via argument
+	resp, _ = p.Chat(context.Background(), messages, nil, "gemini-2.0-pro", nil)
+	if !strings.Contains(resp.Content, "Model used: gemini-2.0-pro") {
+		t.Errorf("expected override model, got: %q", resp.Content)
 	}
 }
 
