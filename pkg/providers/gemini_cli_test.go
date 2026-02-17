@@ -251,8 +251,14 @@ echo "$*"
 		t.Fatal(err)
 	}
 
-	if strings.Contains(resp.Content, "--file") {
-		t.Errorf("did not expect --file flag, got: %q", resp.Content)
+	// Verify the prompt contains the vision context
+	if !strings.Contains(resp.Content, "## Vision Context") {
+		t.Errorf("expected vision context in prompt, got: %q", resp.Content)
+	}
+
+	// Verify the positional argument exists at the end
+	if !strings.Contains(resp.Content, "/tmp/test.jpg") {
+		t.Errorf("expected image path as positional argument, got: %q", resp.Content)
 	}
 }
 

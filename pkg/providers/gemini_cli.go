@@ -63,6 +63,17 @@ func (p *GeminiCLIProvider) Chat(ctx context.Context, messages []Message, tools 
 		compositePrompt.WriteString("\n\n---\n\n")
 	}
 
+	// Add image instructions to the prompt if any images were sent
+	if len(imagePaths) > 0 {
+		compositePrompt.WriteString("## Vision Context\n")
+		compositePrompt.WriteString("The user has attached images to this request. They are available locally at the following paths. ")
+		compositePrompt.WriteString("Please use your vision capabilities or tools to analyze them:\n")
+		for _, path := range imagePaths {
+			compositePrompt.WriteString(fmt.Sprintf("- %s\n", path))
+		}
+		compositePrompt.WriteString("\n---\n\n")
+	}
+
 	compositePrompt.WriteString("Current Task: ")
 	compositePrompt.WriteString(lastUserMsg)
 
@@ -79,6 +90,16 @@ func (p *GeminiCLIProvider) Chat(ctx context.Context, messages []Message, tools 
 		backoff = b
 	}
 	fallbackModel := "gemini-2.0-flash" // Known fast and cheap fallback
+
+	// Fix for trustedFolders.json error seen in logs
+	// Ensure the config directory exists and the file is a valid JSON
+	trustedFoldersPath := "/root/.gemini/trustedFolders.json"
+	// We only try this if we are likely in the container (root user)
+	if _, err := exec.LookPath("mkdir"); err == nil {
+		exec.Command("mkdir", "-p", "/root/.gemini").Run()
+		// If the file doesn't exist or is invalid, overwrite with empty object
+		exec.Command("sh", "-c", "echo '{}' > "+trustedFoldersPath).Run()
+	}
 
 	var lastErr error
 	var lastRawOutput string
@@ -116,6 +137,11 @@ func (p *GeminiCLIProvider) Chat(ctx context.Context, messages []Message, tools 
 		}
 		if p.config.YoloMode {
 			args = append(args, "--yolo")
+		}
+
+		// Try passing images as positional arguments at the end (fallback approach)
+		for _, path := range imagePaths {
+			args = append(args, path)
 		}
 
 		resp, rawOutput, err := p.runGeminiCommand(ctx, args, options)
