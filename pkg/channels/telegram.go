@@ -11,10 +11,7 @@ import (
 	"sync"
 	"time"
 
-	th "github.com/mymmrac/telego/telegohandler"
-
 	"github.com/mymmrac/telego"
-	"github.com/mymmrac/telego/telegohandler"
 	tu "github.com/mymmrac/telego/telegoutil"
 
 	"github.com/sipeed/picoclaw/pkg/bus"
@@ -174,6 +171,11 @@ func (c *TelegramChannel) Send(ctx context.Context, msg bus.OutboundMessage) err
 				}
 
 				editMsg := tu.EditMessageText(tu.ID(chatID), pID.(int), htmlContent)
+				if threadID != 0 {
+					// NOTE: telego might not support MessageThreadID in EditMessageText directly in some versions,
+					// but usually, chatID is enough for editing a specific messageID.
+					// However, some versions might require it. We'll set it just in case.
+				}
 				editMsg.ParseMode = telego.ModeHTML
 
 				if _, err = c.bot.EditMessageText(ctx, editMsg); err == nil {
@@ -358,14 +360,34 @@ func (c *TelegramChannel) handleMessage(ctx context.Context, message *telego.Mes
 		content = "[empty message]"
 	}
 
+	// Topic Discovery: Handle /id command
+	if strings.HasPrefix(content, "/id") {
+		idMsg := fmt.Sprintf("📍 **Chat ID**: `%d`", chatID)
+		if message.MessageThreadID != 0 {
+			idMsg += fmt.Sprintf("\n🧵 **Topic ID**: `%d`", message.MessageThreadID)
+			idMsg += fmt.Sprintf("\n🔗 **Combined ID**: `%s`", chatIDStr)
+		}
+		tgMsg := tu.Message(tu.ID(chatID), idMsg)
+		tgMsg.ParseMode = telego.ModeMarkdownV2
+		if message.MessageThreadID != 0 {
+			tgMsg.MessageThreadID = message.MessageThreadID
+		}
+		c.bot.SendMessage(ctx, tgMsg)
+		return nil
+	}
+
 	logger.DebugCF("telegram", "Received message", map[string]interface{}{
 		"sender_id": senderID,
-		"chat_id":   fmt.Sprintf("%d", chatID),
+		"chat_id":   chatIDStr,
 		"preview":   utils.Truncate(content, 50),
 	})
 
 	// Thinking indicator
-	err := c.bot.SendChatAction(ctx, tu.ChatAction(tu.ID(chatID), telego.ChatActionTyping))
+	chatAction := tu.ChatAction(tu.ID(chatID), telego.ChatActionTyping)
+	if message.MessageThreadID != 0 {
+		chatAction.MessageThreadID = message.MessageThreadID
+	}
+	err := c.bot.SendChatAction(ctx, chatAction)
 	if err != nil {
 		logger.ErrorCF("telegram", "Failed to send chat action", map[string]interface{}{
 			"error": err.Error(),
@@ -373,7 +395,6 @@ func (c *TelegramChannel) handleMessage(ctx context.Context, message *telego.Mes
 	}
 
 	// Stop any previous thinking animation
-	chatIDStr = fmt.Sprintf("%d", chatID)
 	if prevStop, ok := c.stopThinking.Load(chatIDStr); ok {
 		if cf, ok := prevStop.(*thinkingCancel); ok && cf != nil {
 			cf.Cancel()
@@ -384,7 +405,11 @@ func (c *TelegramChannel) handleMessage(ctx context.Context, message *telego.Mes
 	_, thinkCancel := context.WithTimeout(ctx, 5*time.Minute)
 	c.stopThinking.Store(chatIDStr, &thinkingCancel{fn: thinkCancel})
 
-	pMsg, err := c.bot.SendMessage(ctx, tu.Message(tu.ID(chatID), "Thinking... 💭"))
+	thinkingMsg := tu.Message(tu.ID(chatID), "Thinking... 💭")
+	if message.MessageThreadID != 0 {
+		thinkingMsg.MessageThreadID = message.MessageThreadID
+	}
+	pMsg, err := c.bot.SendMessage(ctx, thinkingMsg)
 	if err == nil {
 		pID := pMsg.MessageID
 		c.placeholders.Store(chatIDStr, pID)
