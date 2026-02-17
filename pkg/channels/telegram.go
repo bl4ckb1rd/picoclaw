@@ -230,6 +230,32 @@ func (c *TelegramChannel) handleMessage(ctx context.Context, message *telego.Mes
 		"from":      message.From.ID,
 	})
 
+	chatID := message.Chat.ID
+	chatIDStr := fmt.Sprintf("%d", chatID)
+	if message.MessageThreadID != 0 {
+		chatIDStr = fmt.Sprintf("%d:%d", chatID, message.MessageThreadID)
+	}
+
+	// Topic Discovery: Handle /id command (BEFORE allowlist check)
+	text := message.Text
+	if text == "" {
+		text = message.Caption
+	}
+	if strings.HasPrefix(text, "/id") {
+		idMsg := fmt.Sprintf("📍 **Chat ID**: `%d`", chatID)
+		if message.MessageThreadID != 0 {
+			idMsg += fmt.Sprintf("\n🧵 **Topic ID**: `%d`", message.MessageThreadID)
+			idMsg += fmt.Sprintf("\n🔗 **Combined ID**: `%s`", chatIDStr)
+		}
+		tgMsg := tu.Message(tu.ID(chatID), idMsg)
+		tgMsg.ParseMode = telego.ModeMarkdownV2
+		if message.MessageThreadID != 0 {
+			tgMsg.MessageThreadID = message.MessageThreadID
+		}
+		c.bot.SendMessage(ctx, tgMsg)
+		return nil
+	}
+
 	user := message.From
 	if user == nil {
 		return fmt.Errorf("message sender (user) is nil")
@@ -243,18 +269,14 @@ func (c *TelegramChannel) handleMessage(ctx context.Context, message *telego.Mes
 
 	// 检查白名单，通过数字 ID 或复合 ID 匹配
 	if !c.IsAllowed(userID) && !c.IsAllowed(senderID) {
-		logger.DebugCF("telegram", "Message rejected by allowlist", map[string]interface{}{
+		logger.InfoCF("telegram", "Message rejected by allowlist", map[string]interface{}{
 			"user_id":  userID,
 			"username": user.Username,
+			"chat_id":  chatIDStr,
 		})
 		return nil
 	}
 
-	chatID := message.Chat.ID
-	chatIDStr := fmt.Sprintf("%d", chatID)
-	if message.MessageThreadID != 0 {
-		chatIDStr = fmt.Sprintf("%d:%d", chatID, message.MessageThreadID)
-	}
 	c.chatIDs[senderID] = chatID
 
 	content := ""
@@ -358,22 +380,6 @@ func (c *TelegramChannel) handleMessage(ctx context.Context, message *telego.Mes
 
 	if content == "" {
 		content = "[empty message]"
-	}
-
-	// Topic Discovery: Handle /id command
-	if strings.HasPrefix(content, "/id") {
-		idMsg := fmt.Sprintf("📍 **Chat ID**: `%d`", chatID)
-		if message.MessageThreadID != 0 {
-			idMsg += fmt.Sprintf("\n🧵 **Topic ID**: `%d`", message.MessageThreadID)
-			idMsg += fmt.Sprintf("\n🔗 **Combined ID**: `%s`", chatIDStr)
-		}
-		tgMsg := tu.Message(tu.ID(chatID), idMsg)
-		tgMsg.ParseMode = telego.ModeMarkdownV2
-		if message.MessageThreadID != 0 {
-			tgMsg.MessageThreadID = message.MessageThreadID
-		}
-		c.bot.SendMessage(ctx, tgMsg)
-		return nil
 	}
 
 	logger.DebugCF("telegram", "Received message", map[string]interface{}{
