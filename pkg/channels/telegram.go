@@ -87,48 +87,46 @@ func (c *TelegramChannel) SetTranscriber(transcriber *voice.GroqTranscriber) {
 func (c *TelegramChannel) Start(ctx context.Context) error {
 	logger.InfoC("telegram", "Starting Telegram bot (polling mode)...")
 
+	// Explicitly allow all common update types
 	updates, err := c.bot.UpdatesViaLongPolling(ctx, &telego.GetUpdatesParams{
-		Timeout: 30,
+		Timeout:        30,
+		AllowedUpdates: []string{"message", "edited_message", "channel_post", "edited_channel_post", "my_chat_member", "chat_member"},
 	})
 	if err != nil {
 		return fmt.Errorf("failed to start long polling: %w", err)
 	}
-
-	bh, err := telegohandler.NewBotHandler(c.bot, updates)
-	if err != nil {
-		return fmt.Errorf("failed to create bot handler: %w", err)
-	}
-
-	bh.HandleMessage(func(ctx *th.Context, message telego.Message) error {
-		c.commands.Help(ctx, message)
-		return nil
-	}, th.CommandEqual("help"))
-	bh.HandleMessage(func(ctx *th.Context, message telego.Message) error {
-		return c.commands.Start(ctx, message)
-	}, th.CommandEqual("start"))
-
-	bh.HandleMessage(func(ctx *th.Context, message telego.Message) error {
-		return c.commands.Show(ctx, message)
-	}, th.CommandEqual("show"))
-
-	bh.HandleMessage(func(ctx *th.Context, message telego.Message) error {
-		return c.commands.List(ctx, message)
-	}, th.CommandEqual("list"))
-
-	bh.HandleMessage(func(ctx *th.Context, message telego.Message) error {
-		return c.handleMessage(ctx, &message)
-	}, th.AnyMessage())
 
 	c.setRunning(true)
 	logger.InfoCF("telegram", "Telegram bot connected", map[string]interface{}{
 		"username": c.bot.Username(),
 	})
 
-	go bh.Start()
-
 	go func() {
-		<-ctx.Done()
-		bh.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case update, ok := <-updates:
+				if !ok {
+					logger.InfoC("telegram", "Updates channel closed, reconnecting...")
+					return
+				}
+
+				// Global Trace: Log ANY update type to see what Telegram is sending
+				logger.DebugCF("telegram", "Raw Update Received", map[string]interface{}{
+					"update_id": update.UpdateID,
+					"has_msg":   update.Message != nil,
+					"has_edit":  update.EditedMessage != nil,
+					"has_post":  update.ChannelPost != nil,
+				})
+
+				if update.Message != nil {
+					c.handleMessage(ctx, update.Message)
+				} else if update.EditedMessage != nil {
+					c.handleMessage(ctx, update.EditedMessage)
+				}
+			}
+		}
 	}()
 
 	return nil
