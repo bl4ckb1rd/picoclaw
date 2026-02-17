@@ -59,7 +59,7 @@ func (p *GeminiCLIProvider) Chat(ctx context.Context, messages []Message, tools 
 		compositePrompt.WriteString(systemPrompt)
 		compositePrompt.WriteString("\n\n---\n\n")
 	}
-	
+
 	// Add recent context if it's a subagent or complex task
 	// (Gemini CLI resume might handle main thread, but subagents are independent)
 	compositePrompt.WriteString("Current Task: ")
@@ -193,7 +193,7 @@ func filterOutput(output string) string {
 
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		
+
 		// Detect JSON blocks to skip them entirely
 		if trimmed == "{" || trimmed == "[" {
 			inJSON = true

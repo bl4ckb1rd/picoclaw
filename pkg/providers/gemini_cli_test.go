@@ -89,7 +89,6 @@ echo "The weather is sunny"
 	}
 }
 
-
 func TestGeminiCLIProvider_Chat_NoUserMessage(t *testing.T) {
 	cfg := config.GeminiCLIConfig{
 		Enabled:    true,
