@@ -256,6 +256,107 @@ echo "$*"
 	}
 }
 
+func TestGeminiCLIProvider_Chat_RetryAndFallback(t *testing.T) {
+	// Create a script that fails with RESOURCEEXHAUSTED until we switch to fallback
+	tmpFile, err := os.CreateTemp("", "mock-gemini-retry-*.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	content := `#!/bin/sh
+model=""
+while [ $# -gt 0 ]; do
+  if [ "$1" = "-m" ]; then
+    model="$2"
+  fi
+  shift
+done
+
+if [ "$model" = "gemini-2.0-pro" ]; then
+  # Use a string that contains RESOURCEEXHAUSTED (to trigger retry) 
+  # but also some other text so we can verify it's working
+  echo "CRITICAL_ERROR: MODELCAPACITYEXHAUSTED_LIMIT_HIT"
+  exit 1
+fi
+
+echo "Success with $model"
+`
+	if _, err := tmpFile.WriteString(content); err != nil {
+		t.Fatal(err)
+	}
+	tmpFile.Close()
+	os.Chmod(tmpFile.Name(), 0755)
+
+	msgBus := bus.NewMessageBus()
+	cfg := config.GeminiCLIConfig{
+		Enabled:    true,
+		BinaryPath: tmpFile.Name(),
+		Model:      "gemini-2.0-pro",
+	}
+	p := NewGeminiCLIProvider(cfg, msgBus)
+
+	messages := []Message{
+		{Role: "user", Content: "hello"},
+	}
+
+	// Capture outbound messages to verify retry/fallback notifications
+	captured := make(chan string, 10)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		for {
+			msg, ok := msgBus.SubscribeOutbound(ctx)
+			if !ok {
+				return
+			}
+			captured <- msg.Content
+		}
+	}()
+
+	// Use a shorter backoff for testing (we'll mock the time if needed, but for now we'll just wait)
+	// Actually, the current code has hardcoded 2s, we should probably make it configurable or just wait in the test.
+	// Since 2s + 4s + 8s is too long for a unit test, I will modify the provider to use a shorter base backoff if desired,
+	// or just accept that this test will take ~15s.
+	// BETTER: I will modify the provider to use a default backoff that can be overridden via options for testing.
+	
+	resp, err := p.Chat(ctx, messages, nil, "gemini-cli", map[string]interface{}{
+		"channel":      "test",
+		"chat_id":      "123",
+		"base_backoff": 10 * time.Millisecond,
+	})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(resp.Content, "Success with gemini-2.0-flash") {
+		t.Errorf("expected success with fallback model, got: %q", resp.Content)
+	}
+
+	// Verify we got notifications
+	foundRetry := false
+	foundFallback := false
+	for i := 0; i < 4; i++ {
+		select {
+		case msg := <-captured:
+			if strings.Contains(msg, "Retrying") {
+				foundRetry = true
+			}
+			if strings.Contains(msg, "Switching to fallback") {
+				foundFallback = true
+			}
+		case <-time.After(30 * time.Second): // Long timeout for exponential backoff
+			t.Logf("Timed out waiting for notification %d", i)
+			break // Don't fatal, see if we got at least some
+		}
+	}
+
+	if !foundRetry || !foundFallback {
+		t.Errorf("missing expected notifications: foundRetry=%v, foundFallback=%v", foundRetry, foundFallback)
+	}
+}
+
 func TestFilterOutput(t *testing.T) {
 	input := `YOLO mode is enabled. All tool calls will be automatically approved.
 Loaded cached credentials.

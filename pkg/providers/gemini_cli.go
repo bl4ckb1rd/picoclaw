@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
@@ -65,34 +66,81 @@ func (p *GeminiCLIProvider) Chat(ctx context.Context, messages []Message, tools 
 	compositePrompt.WriteString("Current Task: ")
 	compositePrompt.WriteString(lastUserMsg)
 
-	args := []string{"-p", compositePrompt.String()}
-
-	// Add images via --file flag
-	for _, path := range imagePaths {
-		args = append(args, "--file", path)
-	}
-
-	// Determine model
+	// Determine initial model
 	selectedModel := p.config.Model
 	if model != "" && model != "gemini-cli" && model != "default" {
 		selectedModel = model
 	}
 
-	if selectedModel != "" {
-		args = append(args, "-m", selectedModel)
+	// Retry logic parameters
+	maxRetries := 3
+	backoff := 2 * time.Second
+	if b, ok := options["base_backoff"].(time.Duration); ok {
+		backoff = b
+	}
+	fallbackModel := "gemini-2.0-flash" // Known fast and cheap fallback
+
+	var lastErr error
+	var lastRawOutput string
+
+	for i := 0; i <= maxRetries; i++ {
+		if i > 0 {
+			// Notify user about retry
+			if p.bus != nil {
+				channel, _ := options["channel"].(string)
+				chatID, _ := options["chat_id"].(string)
+				if channel != "" && chatID != "" {
+					msg := fmt.Sprintf("⚠️ Quota exceeded. Retrying in %v (Attempt %d/%d)...", backoff, i, maxRetries)
+					if i == maxRetries && selectedModel != fallbackModel {
+						msg = fmt.Sprintf("⚠️ Quota exceeded. Switching to fallback model %s...", fallbackModel)
+						selectedModel = fallbackModel
+					}
+					p.bus.PublishOutbound(bus.OutboundMessage{
+						Channel: channel,
+						ChatID:  chatID,
+						Content: msg,
+					})
+				}
+			}
+			time.Sleep(backoff)
+			backoff *= 2 // Exponential backoff
+		}
+
+		args := []string{"-p", compositePrompt.String()}
+		if selectedModel != "" {
+			args = append(args, "-m", selectedModel)
+		}
+
+		for _, path := range imagePaths {
+			args = append(args, "--file", path)
+		}
+
+		if p.config.ResumeSession {
+			args = append(args, "--resume", "latest")
+		}
+		if p.config.YoloMode {
+			args = append(args, "--yolo")
+		}
+
+		resp, rawOutput, err := p.runGeminiCommand(ctx, args, options)
+		lastRawOutput = rawOutput
+		if err == nil {
+			return resp, nil
+		}
+
+		lastErr = err
+		// Only retry on quota/capacity errors
+		if !strings.Contains(rawOutput, "RESOURCEEXHAUSTED") && 
+		   !strings.Contains(rawOutput, "MODELCAPACITYEXHAUSTED") && 
+		   !strings.Contains(rawOutput, "Too Many Requests") {
+			break
+		}
 	}
 
-	// Handle Session
-	// Gemini CLI currently only supports "latest" or numeric index.
-	// We default to "latest" to maintain continuity for the single user.
-	if p.config.ResumeSession {
-		args = append(args, "--resume", "latest")
-	}
+	return nil, fmt.Errorf("gemini cli failed after retries: %v, output: %s", lastErr, lastRawOutput)
+}
 
-	if p.config.YoloMode {
-		args = append(args, "--yolo")
-	}
-
+func (p *GeminiCLIProvider) runGeminiCommand(ctx context.Context, args []string, options map[string]interface{}) (*LLMResponse, string, error) {
 	cmd := exec.CommandContext(ctx, p.config.BinaryPath, args...)
 	if p.config.WorkingDir != "" {
 		cmd.Dir = p.config.WorkingDir
@@ -100,12 +148,12 @@ func (p *GeminiCLIProvider) Chat(ctx context.Context, messages []Message, tools 
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get stdout pipe: %v", err)
+		return nil, "", fmt.Errorf("failed to get stdout pipe: %v", err)
 	}
 	cmd.Stderr = cmd.Stdout // Merge stderr into stdout
 
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("failed to start gemini cli: %v", err)
+		return nil, "", fmt.Errorf("failed to start gemini cli: %v", err)
 	}
 
 	channel, _ := options["channel"].(string)
@@ -159,14 +207,13 @@ func (p *GeminiCLIProvider) Chat(ctx context.Context, messages []Message, tools 
 	})
 
 	if err != nil {
-		// If exit code is non-zero, return full output for debugging
-		return nil, fmt.Errorf("gemini cli execution failed: %v, output: %s", err, rawOutput)
+		return nil, rawOutput, err
 	}
 
 	return &LLMResponse{
 		Content:      outputStr,
 		FinishReason: "stop",
-	}, nil
+	}, rawOutput, nil
 }
 
 func isNoise(line string) bool {
