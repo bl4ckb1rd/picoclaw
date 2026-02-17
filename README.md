@@ -680,6 +680,38 @@ The subagent has access to tools (message, web_search, etc.) and can communicate
 | `groq`                     | LLM + **Voice transcription** (Whisper) | [console.groq.com](https://console.groq.com)           |
 
 <details>
+<summary><b>Gemini CLI (Gemiclaw Bridge)</b></summary>
+
+**1. Install Gemini CLI**
+
+Follow the instructions at [google/gemini-cli](https://github.com/google/gemini-cli) to install and login.
+
+**2. Configure**
+
+Use your local `gemini` binary instead of an API key. This allows you to use your existing Google subscription and local context.
+
+```json
+{
+  "gemini_cli": {
+    "enabled": true,
+    "binary_path": "/path/to/gemini",
+    "model": "gemini-2.0-flash",
+    "working_dir": "/your/project/root",
+    "yolo_mode": true,
+    "resume_session": true
+  }
+}
+```
+
+**Key Features:**
+- **Zero API Key**: Uses your local `gemini login` credentials.
+- **Real-time Streaming**: "Thoughts" (I will...) are streamed to Telegram as they happen.
+- **YOLO Mode**: Automatically executes tools without confirmation.
+- **System Prompt Integration**: Inherits identity from `AGENT.md` and `SOUL.md`.
+
+</details>
+
+<details>
 <summary><b>Zhipu</b></summary>
 
 **1. Get API key and base URL**
