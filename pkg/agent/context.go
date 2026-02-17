@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/providers"
 	"github.com/sipeed/picoclaw/pkg/skills"
@@ -16,6 +17,7 @@ import (
 
 type ContextBuilder struct {
 	workspace    string
+	config       *config.Config
 	skillsLoader *skills.SkillsLoader
 	memory       *MemoryStore
 	tools        *tools.ToolRegistry // Direct reference to tool registry
@@ -29,7 +31,7 @@ func getGlobalConfigDir() string {
 	return filepath.Join(home, ".picoclaw")
 }
 
-func NewContextBuilder(workspace string) *ContextBuilder {
+func NewContextBuilder(workspace string, cfg *config.Config) *ContextBuilder {
 	// builtin skills: skills directory in current project
 	// Use the skills/ directory under the current working directory
 	wd, _ := os.Getwd()
@@ -38,6 +40,7 @@ func NewContextBuilder(workspace string) *ContextBuilder {
 
 	return &ContextBuilder{
 		workspace:    workspace,
+		config:       cfg,
 		skillsLoader: skills.NewSkillsLoader(workspace, globalSkillsDir, builtinSkillsDir),
 		memory:       NewMemoryStore(workspace),
 	}
@@ -106,11 +109,34 @@ func (cb *ContextBuilder) buildToolsSection() string {
 	return sb.String()
 }
 
-func (cb *ContextBuilder) BuildSystemPrompt() string {
+func (cb *ContextBuilder) BuildSystemPrompt(channel, chatID string) string {
 	parts := []string{}
 
 	// Core identity section
 	parts = append(parts, cb.getIdentity())
+
+	// Personality-specific instructions
+	if cb.config != nil && channel != "" && chatID != "" {
+		pName, ok := cb.config.ChatPersonalities[chatID]
+		if !ok {
+			// Try with channel prefix if specific ID not found
+			pName, ok = cb.config.ChatPersonalities[channel+":"+chatID]
+		}
+
+		if ok {
+			if p, exists := cb.config.Personalities[pName]; exists {
+				if p.Instructions != "" {
+					parts = append(parts, fmt.Sprintf("# Special Persona: %s\n\n%s", pName, p.Instructions))
+				}
+				if len(p.Skills) > 0 {
+					personalitySkills := cb.skillsLoader.LoadSkillsForContext(p.Skills)
+					if personalitySkills != "" {
+						parts = append(parts, fmt.Sprintf("# Personality Skills (%s)\n\n%s", pName, personalitySkills))
+					}
+				}
+			}
+		}
+	}
 
 	// Bootstrap files
 	bootstrapContent := cb.LoadBootstrapFiles()
@@ -160,7 +186,7 @@ func (cb *ContextBuilder) LoadBootstrapFiles() string {
 func (cb *ContextBuilder) BuildMessages(history []providers.Message, summary string, currentMessage string, media []string, channel, chatID string) []providers.Message {
 	messages := []providers.Message{}
 
-	systemPrompt := cb.BuildSystemPrompt()
+	systemPrompt := cb.BuildSystemPrompt(channel, chatID)
 
 	// Add Current Session info if provided
 	if channel != "" && chatID != "" {

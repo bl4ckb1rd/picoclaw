@@ -44,15 +44,23 @@ func (f *FlexibleStringSlice) UnmarshalJSON(data []byte) error {
 }
 
 type Config struct {
-	Agents    AgentsConfig    `json:"agents"`
-	Channels  ChannelsConfig  `json:"channels"`
-	Providers ProvidersConfig `json:"providers"`
-	Gateway   GatewayConfig   `json:"gateway"`
-	Tools     ToolsConfig     `json:"tools"`
-	Heartbeat HeartbeatConfig `json:"heartbeat"`
-	Devices   DevicesConfig   `json:"devices"`
-	GeminiCLI GeminiCLIConfig `json:"gemini_cli"`
-	mu        sync.RWMutex
+	Agents            AgentsConfig                 `json:"agents"`
+	Channels          ChannelsConfig               `json:"channels"`
+	Providers         ProvidersConfig              `json:"providers"`
+	Gateway           GatewayConfig                `json:"gateway"`
+	Tools             ToolsConfig                  `json:"tools"`
+	Heartbeat         HeartbeatConfig              `json:"heartbeat"`
+	Devices           DevicesConfig                `json:"devices"`
+	GeminiCLI         GeminiCLIConfig              `json:"gemini_cli"`
+	Personalities     map[string]PersonalityConfig `json:"personalities"`      // Name -> Config
+	ChatPersonalities map[string]string            `json:"chat_personalities"` // ChatID -> Personality Name
+	mu                sync.RWMutex
+}
+
+type PersonalityConfig struct {
+	Instructions string   `json:"instructions"`
+	Skills       []string `json:"skills"`
+	Model        string   `json:"model,omitempty"` // Optional model override for this personality
 }
 
 type GeminiCLIConfig struct {
@@ -368,6 +376,8 @@ func DefaultConfig() *Config {
 			YoloMode:      true,
 			ResumeSession: true,
 		},
+		Personalities:     make(map[string]PersonalityConfig),
+		ChatPersonalities: make(map[string]string),
 	}
 }
 

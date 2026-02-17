@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/sipeed/picoclaw/pkg/bus"
+	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/providers"
 )
 
@@ -25,6 +26,7 @@ type SubagentManager struct {
 	tasks         map[string]*SubagentTask
 	mu            sync.RWMutex
 	provider      providers.LLMProvider
+	config        *config.Config
 	defaultModel  string
 	bus           *bus.MessageBus
 	workspace     string
@@ -33,10 +35,11 @@ type SubagentManager struct {
 	nextID        int
 }
 
-func NewSubagentManager(provider providers.LLMProvider, defaultModel, workspace string, bus *bus.MessageBus) *SubagentManager {
+func NewSubagentManager(provider providers.LLMProvider, cfg *config.Config, defaultModel, workspace string, bus *bus.MessageBus) *SubagentManager {
 	return &SubagentManager{
 		tasks:         make(map[string]*SubagentTask),
 		provider:      provider,
+		config:        cfg,
 		defaultModel:  defaultModel,
 		bus:           bus,
 		workspace:     workspace,
@@ -126,6 +129,17 @@ After completing the task, provide a clear summary of what was done.`
 	selectedModel := sm.defaultModel
 	if model != "" {
 		selectedModel = model
+	} else if sm.config != nil && task.OriginChannel != "" && task.OriginChatID != "" {
+		// Inheritance from personality
+		pName, ok := sm.config.ChatPersonalities[task.OriginChatID]
+		if !ok {
+			pName, ok = sm.config.ChatPersonalities[task.OriginChannel+":"+task.OriginChatID]
+		}
+		if ok {
+			if p, exists := sm.config.Personalities[pName]; exists && p.Model != "" {
+				selectedModel = p.Model
+			}
+		}
 	}
 	sm.mu.RUnlock()
 
@@ -293,6 +307,17 @@ func (t *SubagentTool) Execute(ctx context.Context, args map[string]interface{})
 	selectedModel := sm.defaultModel
 	if model != "" {
 		selectedModel = model
+	} else if sm.config != nil && t.originChannel != "" && t.originChatID != "" {
+		// Inheritance from personality
+		pName, ok := sm.config.ChatPersonalities[t.originChatID]
+		if !ok {
+			pName, ok = sm.config.ChatPersonalities[t.originChannel+":"+t.originChatID]
+		}
+		if ok {
+			if p, exists := sm.config.Personalities[pName]; exists && p.Model != "" {
+				selectedModel = p.Model
+			}
+		}
 	}
 	sm.mu.RUnlock()
 

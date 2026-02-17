@@ -33,6 +33,7 @@ import (
 type AgentLoop struct {
 	bus            *bus.MessageBus
 	provider       providers.LLMProvider
+	config         *config.Config
 	workspace      string
 	model          string
 	contextWindow  int // Maximum context window size in tokens
@@ -117,7 +118,7 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	toolsRegistry := createToolRegistry(workspace, restrict, cfg, msgBus)
 
 	// Create subagent manager with its own tool registry
-	subagentManager := tools.NewSubagentManager(provider, cfg.Agents.Defaults.Model, workspace, msgBus)
+	subagentManager := tools.NewSubagentManager(provider, cfg, cfg.Agents.Defaults.Model, workspace, msgBus)
 	subagentTools := createToolRegistry(workspace, restrict, cfg, msgBus)
 	// Subagent doesn't need spawn/subagent tools to avoid recursion
 	subagentManager.SetTools(subagentTools)
@@ -136,12 +137,13 @@ func NewAgentLoop(cfg *config.Config, msgBus *bus.MessageBus, provider providers
 	stateManager := state.NewManager(workspace)
 
 	// Create context builder and set tools registry
-	contextBuilder := NewContextBuilder(workspace)
+	contextBuilder := NewContextBuilder(workspace, cfg)
 	contextBuilder.SetToolsRegistry(toolsRegistry)
 
 	return &AgentLoop{
 		bus:            msgBus,
 		provider:       provider,
+		config:         cfg,
 		workspace:      workspace,
 		model:          cfg.Agents.Defaults.Model,
 		contextWindow:  cfg.Agents.Defaults.MaxTokens, // Restore context window for summarization
@@ -440,13 +442,27 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 		var response *providers.LLMResponse
 		var err error
 
+		// Determine model (with personality override)
+		selectedModel := al.model
+		if al.config != nil && opts.Channel != "" && opts.ChatID != "" {
+			pName, ok := al.config.ChatPersonalities[opts.ChatID]
+			if !ok {
+				pName, ok = al.config.ChatPersonalities[opts.Channel+":"+opts.ChatID]
+			}
+			if ok {
+				if p, exists := al.config.Personalities[pName]; exists && p.Model != "" {
+					selectedModel = p.Model
+				}
+			}
+		}
+
 		// Retry loop for context/token errors
 		maxRetries := 2
 		for retry := 0; retry <= maxRetries; retry++ {
 			// Build tool definitions (must be done inside the loop if messages change)
 			providerToolDefs := al.tools.ToProviderDefs()
 
-			response, err = al.provider.Chat(ctx, messages, providerToolDefs, al.model, map[string]interface{}{
+			response, err = al.provider.Chat(ctx, messages, providerToolDefs, selectedModel, map[string]interface{}{
 				"max_tokens":  8192,
 				"temperature": 0.7,
 				"session_key": opts.SessionKey,
