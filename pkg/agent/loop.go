@@ -437,13 +437,15 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			})
 
 		// Call LLM
-		// Call LLM
 		var response *providers.LLMResponse
 		var err error
 
 		// Retry loop for context/token errors
 		maxRetries := 2
 		for retry := 0; retry <= maxRetries; retry++ {
+			// Build tool definitions (must be done inside the loop if messages change)
+			providerToolDefs := al.tools.ToProviderDefs()
+
 			response, err = al.provider.Chat(ctx, messages, providerToolDefs, al.model, map[string]interface{}{
 				"max_tokens":  8192,
 				"temperature": 0.7,
@@ -455,6 +457,51 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, messages []providers.M
 			if err == nil {
 				break // Success
 			}
+
+			errMsg := strings.ToLower(err.Error())
+			// Check for context window errors (provider specific, but usually contain "token" or "invalid")
+			isContextError := strings.Contains(errMsg, "token") ||
+				strings.Contains(errMsg, "context") ||
+				strings.Contains(errMsg, "invalidparameter") ||
+				strings.Contains(errMsg, "length")
+
+			if isContextError && retry < maxRetries {
+				logger.WarnCF("agent", "Context window error detected, attempting compression", map[string]interface{}{
+					"error": err.Error(),
+					"retry": retry,
+				})
+
+				// Notify user on first retry only
+				if retry == 0 && !constants.IsInternalChannel(opts.Channel) && opts.SendResponse {
+					al.bus.PublishOutbound(bus.OutboundMessage{
+						Channel: opts.Channel,
+						ChatID:  opts.ChatID,
+						Content: "⚠️ Context window exceeded. Compressing history and retrying...",
+					})
+				}
+
+				// Force compression
+				al.forceCompression(opts.SessionKey)
+
+				// Rebuild messages with compressed history
+				newHistory := al.sessions.GetHistory(opts.SessionKey)
+				newSummary := al.sessions.GetSummary(opts.SessionKey)
+
+				messages = al.contextBuilder.BuildMessages(
+					newHistory,
+					newSummary,
+					"", // Empty because history already contains the relevant messages
+					nil,
+					opts.Channel,
+					opts.ChatID,
+				)
+
+				continue
+			}
+
+			// Real error or success, break loop
+			break
+		}
 
 		if err != nil {
 			logger.ErrorCF("agent", "LLM call failed",

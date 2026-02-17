@@ -44,7 +44,7 @@ echo "The weather is sunny"
 
 	// Channel to collect streamed thoughts
 	type thoughtResult struct {
-		content  string
+		content   string
 		isThought bool
 	}
 	thoughts := make(chan thoughtResult, 10)
@@ -319,7 +319,7 @@ echo "Success with $model"
 	// Since 2s + 4s + 8s is too long for a unit test, I will modify the provider to use a shorter base backoff if desired,
 	// or just accept that this test will take ~15s.
 	// BETTER: I will modify the provider to use a default backoff that can be overridden via options for testing.
-	
+
 	resp, err := p.Chat(ctx, messages, nil, "gemini-cli", map[string]interface{}{
 		"channel":      "test",
 		"chat_id":      "123",

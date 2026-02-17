@@ -130,9 +130,9 @@ func (p *GeminiCLIProvider) Chat(ctx context.Context, messages []Message, tools 
 
 		lastErr = err
 		// Only retry on quota/capacity errors
-		if !strings.Contains(rawOutput, "RESOURCEEXHAUSTED") && 
-		   !strings.Contains(rawOutput, "MODELCAPACITYEXHAUSTED") && 
-		   !strings.Contains(rawOutput, "Too Many Requests") {
+		if !strings.Contains(rawOutput, "RESOURCEEXHAUSTED") &&
+			!strings.Contains(rawOutput, "MODELCAPACITYEXHAUSTED") &&
+			!strings.Contains(rawOutput, "Too Many Requests") {
 			break
 		}
 	}
