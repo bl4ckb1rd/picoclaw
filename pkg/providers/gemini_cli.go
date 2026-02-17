@@ -9,6 +9,7 @@ import (
 
 	"github.com/sipeed/picoclaw/pkg/bus"
 	"github.com/sipeed/picoclaw/pkg/config"
+	"github.com/sipeed/picoclaw/pkg/logger"
 )
 
 type GeminiCLIProvider struct {
@@ -139,11 +140,19 @@ func (p *GeminiCLIProvider) Chat(ctx context.Context, messages []Message, tools 
 	}
 
 	err = cmd.Wait()
+	rawOutput := fullOutput.String()
 	outputStr := strings.TrimSpace(finalAnswer.String())
+
+	// Log the raw output for debugging infrastructure/quota issues
+	logger.DebugCF("gemini-cli", "Raw output captured", map[string]interface{}{
+		"exit_code":   0,
+		"output_len":  len(rawOutput),
+		"raw_content": rawOutput,
+	})
 
 	if err != nil {
 		// If exit code is non-zero, return full output for debugging
-		return nil, fmt.Errorf("gemini cli execution failed: %v, output: %s", err, fullOutput.String())
+		return nil, fmt.Errorf("gemini cli execution failed: %v, output: %s", err, rawOutput)
 	}
 
 	return &LLMResponse{
