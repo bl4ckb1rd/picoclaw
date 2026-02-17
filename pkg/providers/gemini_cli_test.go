@@ -129,7 +129,12 @@ Hook registry initialized with 0 hook entries
 Attempt 1 failed: You have exhausted your capacity...
 I will check the weather.
 pgrep: bash: line 1: pgrep: command not found
-Actual Answer`
+{
+  "error": "true",
+  "message": "Too many requests"
+}
+Actual Answer
+    at Gaxios.request (/usr/local/lib/node_modules/...)`
 
 	expected := `I will check the weather.
 Actual Answer`

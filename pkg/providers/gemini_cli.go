@@ -119,7 +119,7 @@ func (p *GeminiCLIProvider) Chat(ctx context.Context, messages []Message, tools 
 		}
 
 		// Filter noise
-		if isNoise(trimmed) {
+		if isNoise(line) {
 			continue
 		}
 
@@ -153,36 +153,59 @@ func (p *GeminiCLIProvider) Chat(ctx context.Context, messages []Message, tools 
 }
 
 func isNoise(line string) bool {
-	return strings.HasPrefix(line, "YOLO mode is enabled") ||
-		strings.HasPrefix(line, "Loaded cached credentials") ||
-		strings.HasPrefix(line, "Hook registry initialized") ||
-		(strings.HasPrefix(line, "Attempt ") && strings.Contains(line, "failed")) ||
-		strings.Contains(line, "pgrep: command not found")
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" {
+		return true
+	}
+
+	// Filter out noisy system logs
+	if strings.HasPrefix(trimmed, "YOLO mode is enabled") ||
+		strings.HasPrefix(trimmed, "Loaded cached credentials") ||
+		strings.HasPrefix(trimmed, "Hook registry initialized") ||
+		(strings.HasPrefix(trimmed, "Attempt ") && strings.Contains(trimmed, "failed")) ||
+		strings.Contains(trimmed, "pgrep: command not found") ||
+		strings.HasPrefix(trimmed, "at ") || // Stack trace lines
+		strings.Contains(trimmed, "file:///") || // File paths in stack traces
+		strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "}") || // JSON blocks
+		strings.HasPrefix(trimmed, "\"") || // JSON properties
+		strings.Contains(trimmed, "RESOURCEEXHAUSTED") ||
+		strings.Contains(trimmed, "MODELCAPACITYEXHAUSTED") ||
+		strings.Contains(trimmed, "Too Many Requests") {
+		return true
+	}
+
+	return false
 }
 
 func filterOutput(output string) string {
 	lines := strings.Split(output, "\n")
 	var filtered []string
+	inJSON := false
 
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
+		
+		// Detect JSON blocks to skip them entirely
+		if trimmed == "{" || trimmed == "[" {
+			inJSON = true
+			continue
+		}
+		if inJSON {
+			if trimmed == "}" || trimmed == "]" || trimmed == "}," || trimmed == "]," {
+				inJSON = false
+			}
 			continue
 		}
 
-		// Filter out noisy system logs
-		if strings.HasPrefix(trimmed, "YOLO mode is enabled") ||
-			strings.HasPrefix(trimmed, "Loaded cached credentials") ||
-			strings.HasPrefix(trimmed, "Hook registry initialized") ||
-			strings.HasPrefix(trimmed, "Attempt ") && strings.Contains(trimmed, "failed") ||
-			strings.Contains(trimmed, "pgrep: command not found") {
+		if isNoise(line) {
 			continue
 		}
 
 		filtered = append(filtered, line)
 	}
 
-	return strings.Join(filtered, "\n")
+	result := strings.Join(filtered, "\n")
+	return strings.TrimSpace(result)
 }
 
 func (p *GeminiCLIProvider) GetDefaultModel() string {
