@@ -61,7 +61,7 @@ func (sm *SubagentManager) RegisterTool(tool Tool) {
 	sm.tools.Register(tool)
 }
 
-func (sm *SubagentManager) Spawn(ctx context.Context, task, label, originChannel, originChatID string, callback AsyncCallback) (string, error) {
+func (sm *SubagentManager) Spawn(ctx context.Context, task, label, originChannel, originChatID, model string, callback AsyncCallback) (string, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
@@ -80,7 +80,7 @@ func (sm *SubagentManager) Spawn(ctx context.Context, task, label, originChannel
 	sm.tasks[taskID] = subagentTask
 
 	// Start task in background with context cancellation support
-	go sm.runTask(ctx, subagentTask, callback)
+	go sm.runTask(ctx, subagentTask, model, callback)
 
 	if label != "" {
 		return fmt.Sprintf("Spawned subagent '%s' for task: %s", label, task), nil
@@ -88,7 +88,7 @@ func (sm *SubagentManager) Spawn(ctx context.Context, task, label, originChannel
 	return fmt.Sprintf("Spawned subagent for task: %s", task), nil
 }
 
-func (sm *SubagentManager) runTask(ctx context.Context, task *SubagentTask, callback AsyncCallback) {
+func (sm *SubagentManager) runTask(ctx context.Context, task *SubagentTask, model string, callback AsyncCallback) {
 	task.Status = "running"
 	task.Created = time.Now().UnixMilli()
 
@@ -123,11 +123,15 @@ After completing the task, provide a clear summary of what was done.`
 	sm.mu.RLock()
 	tools := sm.tools
 	maxIter := sm.maxIterations
+	selectedModel := sm.defaultModel
+	if model != "" {
+		selectedModel = model
+	}
 	sm.mu.RUnlock()
 
 	loopResult, err := RunToolLoop(ctx, ToolLoopConfig{
 		Provider:      sm.provider,
-		Model:         sm.defaultModel,
+		Model:         selectedModel,
 		Tools:         tools,
 		MaxIterations: maxIter,
 		LLMOptions: map[string]any{
@@ -242,6 +246,10 @@ func (t *SubagentTool) Parameters() map[string]interface{} {
 				"type":        "string",
 				"description": "Optional short label for the task (for display)",
 			},
+			"model": map[string]interface{}{
+				"type":        "string",
+				"description": "Optional model to use for this subagent (e.g., gemini-3-pro)",
+			},
 		},
 		"required": []string{"task"},
 	}
@@ -259,6 +267,7 @@ func (t *SubagentTool) Execute(ctx context.Context, args map[string]interface{})
 	}
 
 	label, _ := args["label"].(string)
+	model, _ := args["model"].(string)
 
 	if t.manager == nil {
 		return ErrorResult("Subagent manager not configured").WithError(fmt.Errorf("manager is nil"))
@@ -281,11 +290,15 @@ func (t *SubagentTool) Execute(ctx context.Context, args map[string]interface{})
 	sm.mu.RLock()
 	tools := sm.tools
 	maxIter := sm.maxIterations
+	selectedModel := sm.defaultModel
+	if model != "" {
+		selectedModel = model
+	}
 	sm.mu.RUnlock()
 
 	loopResult, err := RunToolLoop(ctx, ToolLoopConfig{
 		Provider:      sm.provider,
-		Model:         sm.defaultModel,
+		Model:         selectedModel,
 		Tools:         tools,
 		MaxIterations: maxIter,
 		LLMOptions: map[string]any{

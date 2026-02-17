@@ -45,6 +45,10 @@ func (t *SpawnTool) Parameters() map[string]interface{} {
 				"type":        "string",
 				"description": "Optional short label for the task (for display)",
 			},
+			"model": map[string]interface{}{
+				"type":        "string",
+				"description": "Optional model to use for this subagent (e.g., gemini-3-pro)",
+			},
 		},
 		"required": []string{"task"},
 	}
@@ -62,13 +66,14 @@ func (t *SpawnTool) Execute(ctx context.Context, args map[string]interface{}) *T
 	}
 
 	label, _ := args["label"].(string)
+	model, _ := args["model"].(string)
 
 	if t.manager == nil {
 		return ErrorResult("Subagent manager not configured")
 	}
 
 	// Pass callback to manager for async completion notification
-	result, err := t.manager.Spawn(ctx, task, label, t.originChannel, t.originChatID, t.callback)
+	result, err := t.manager.Spawn(ctx, task, label, t.originChannel, t.originChatID, model, t.callback)
 	if err != nil {
 		return ErrorResult(fmt.Sprintf("failed to spawn subagent: %v", err))
 	}
