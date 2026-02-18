@@ -87,7 +87,7 @@ func (c *TelegramChannel) Start(ctx context.Context) error {
 	// Explicitly allow all common update types
 	updates, err := c.bot.UpdatesViaLongPolling(ctx, &telego.GetUpdatesParams{
 		Timeout:        30,
-		AllowedUpdates: []string{"message", "edited_message", "channel_post", "edited_channel_post", "my_chat_member", "chat_member"},
+		AllowedUpdates: []string{"message", "edited_message", "channel_post", "edited_channel_post", "my_chat_member", "chat_member", "poll", "poll_answer"},
 	})
 	if err != nil {
 		return fmt.Errorf("failed to start long polling: %w", err)
@@ -257,14 +257,25 @@ func (c *TelegramChannel) handleMessage(ctx context.Context, message *telego.Mes
 	}
 
 	user := message.From
-	if user == nil {
-		return fmt.Errorf("message sender (user) is nil")
+	userID := "0"
+	senderID := "system"
+	if user != nil {
+		userID = fmt.Sprintf("%d", user.ID)
+		senderID = userID
+		if user.Username != "" {
+			senderID = fmt.Sprintf("%s|%s", userID, user.Username)
+		}
+	} else if message.SenderChat != nil {
+		senderID = fmt.Sprintf("chat:%d", message.SenderChat.ID)
 	}
 
-	userID := fmt.Sprintf("%d", user.ID)
-	senderID := userID
-	if user.Username != "" {
-		senderID = fmt.Sprintf("%s|%s", userID, user.Username)
+	// Log special service messages
+	if message.ForumTopicCreated != nil {
+		logger.InfoCF("telegram", "New forum topic created", map[string]interface{}{
+			"chat_id":  message.Chat.ID,
+			"topic_id": message.MessageThreadID,
+			"name":     message.ForumTopicCreated.Name,
+		})
 	}
 
 	// 检查白名单，通过数字 ID 或复合 ID 匹配
@@ -424,9 +435,11 @@ func (c *TelegramChannel) handleMessage(ctx context.Context, message *telego.Mes
 	metadata := map[string]string{
 		"message_id": fmt.Sprintf("%d", message.MessageID),
 		"user_id":    userID,
-		"username":   user.Username,
-		"first_name": user.FirstName,
 		"is_group":   fmt.Sprintf("%t", message.Chat.Type != "private"),
+	}
+	if user != nil {
+		metadata["username"] = user.Username
+		metadata["first_name"] = user.FirstName
 	}
 
 	c.HandleMessage(senderID, chatIDStr, content, mediaPaths, metadata)
