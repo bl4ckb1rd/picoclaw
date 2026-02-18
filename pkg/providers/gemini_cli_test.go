@@ -278,10 +278,9 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-if [ "$model" = "gemini-2.0-pro" ]; then
-  # Use a string that contains RESOURCEEXHAUSTED (to trigger retry) 
-  # but also some other text so we can verify it's working
-  echo "CRITICAL_ERROR: MODELCAPACITYEXHAUSTED_LIMIT_HIT"
+if [ "$model" = "gemini-2.0-pro" ] || [ "$model" = "gemini-2.0-flash" ]; then
+  # Use a string that contains QuotaError (to trigger retry) 
+  echo "CRITICAL_ERROR: RetryableQuotaError - MODELCAPACITYEXHAUSTED_LIMIT_HIT"
   exit 1
 fi
 
@@ -319,12 +318,7 @@ echo "Success with $model"
 		}
 	}()
 
-	// Use a shorter backoff for testing (we'll mock the time if needed, but for now we'll just wait)
-	// Actually, the current code has hardcoded 2s, we should probably make it configurable or just wait in the test.
-	// Since 2s + 4s + 8s is too long for a unit test, I will modify the provider to use a shorter base backoff if desired,
-	// or just accept that this test will take ~15s.
-	// BETTER: I will modify the provider to use a default backoff that can be overridden via options for testing.
-
+	// Use a shorter backoff for testing
 	resp, err := p.Chat(ctx, messages, nil, "gemini-cli", map[string]interface{}{
 		"channel":      "test",
 		"chat_id":      "123",
@@ -335,8 +329,8 @@ echo "Success with $model"
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if !strings.Contains(resp.Content, "Success with gemini-2.0-flash") {
-		t.Errorf("expected success with fallback model, got: %q", resp.Content)
+	if !strings.Contains(resp.Content, "Success with gemini-1.5-flash") {
+		t.Errorf("expected success with 1.5-flash fallback model, got: %q", resp.Content)
 	}
 
 	// Verify we got notifications
@@ -345,10 +339,10 @@ echo "Success with $model"
 	for i := 0; i < 4; i++ {
 		select {
 		case msg := <-captured:
-			if strings.Contains(msg, "Retrying") {
+			if strings.Contains(msg, "Quota exceeded") {
 				foundRetry = true
 			}
-			if strings.Contains(msg, "Switching to fallback") {
+			if strings.Contains(msg, "Switching to") {
 				foundFallback = true
 			}
 		case <-time.After(30 * time.Second): // Long timeout for exponential backoff

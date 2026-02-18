@@ -89,7 +89,13 @@ func (p *GeminiCLIProvider) Chat(ctx context.Context, messages []Message, tools 
 	if b, ok := options["base_backoff"].(time.Duration); ok {
 		backoff = b
 	}
-	fallbackModel := "gemini-2.0-flash" // Known fast and cheap fallback
+
+	// Tiered fallbacks for resilience
+	fallbacks := []string{
+		"gemini-2.0-flash",
+		"gemini-1.5-flash",
+		"", // "auto" - let CLI decide
+	}
 
 	// Fix for trustedFolders.json error seen in logs
 	// Ensure the config directory exists and the file is a valid JSON
@@ -106,25 +112,35 @@ func (p *GeminiCLIProvider) Chat(ctx context.Context, messages []Message, tools 
 
 	for i := 0; i <= maxRetries; i++ {
 		if i > 0 {
-			// Notify user about retry
-			if p.bus != nil {
-				channel, _ := options["channel"].(string)
-				chatID, _ := options["chat_id"].(string)
-				if channel != "" && chatID != "" {
-					msg := fmt.Sprintf("⚠️ Quota exceeded. Retrying in %v (Attempt %d/%d)...", backoff, i, maxRetries)
-					if i == maxRetries && selectedModel != fallbackModel {
-						msg = fmt.Sprintf("⚠️ Quota exceeded. Switching to fallback model %s...", fallbackModel)
-						selectedModel = fallbackModel
+			// Select fallback for this attempt
+			if i-1 < len(fallbacks) {
+				fallback := fallbacks[i-1]
+				if selectedModel != fallback {
+					msg := fmt.Sprintf("⚠️ Quota exceeded for %s. Switching to %s...", selectedModel, func() string {
+						if fallback == "" {
+							return "auto (default)"
+						}
+						return fallback
+					}())
+
+					selectedModel = fallback
+					if p.bus != nil {
+						channel, _ := options["channel"].(string)
+						chatID, _ := options["chat_id"].(string)
+						if channel != "" && chatID != "" {
+							p.bus.PublishOutbound(bus.OutboundMessage{
+								Channel: channel,
+								ChatID:  chatID,
+								Content: msg,
+							})
+						}
 					}
-					p.bus.PublishOutbound(bus.OutboundMessage{
-						Channel: channel,
-						ChatID:  chatID,
-						Content: msg,
-					})
 				}
+			} else {
+				// Standard wait if we already exhausted fallbacks or same model
+				time.Sleep(backoff)
+				backoff *= 2
 			}
-			time.Sleep(backoff)
-			backoff *= 2 // Exponential backoff
 		}
 
 		args := []string{"-p", compositePrompt.String()}
@@ -149,6 +165,7 @@ func (p *GeminiCLIProvider) Chat(ctx context.Context, messages []Message, tools 
 		// Only retry on quota/capacity errors
 		if !strings.Contains(rawOutput, "RESOURCEEXHAUSTED") &&
 			!strings.Contains(rawOutput, "MODELCAPACITYEXHAUSTED") &&
+			!strings.Contains(rawOutput, "QuotaError") &&
 			!strings.Contains(rawOutput, "Too Many Requests") {
 			break
 		}
@@ -251,6 +268,8 @@ func isNoise(line string) bool {
 		strings.HasPrefix(trimmed, "\"") || // JSON properties
 		strings.Contains(trimmed, "RESOURCEEXHAUSTED") ||
 		strings.Contains(trimmed, "MODELCAPACITYEXHAUSTED") ||
+		strings.Contains(trimmed, "QuotaError") ||
+		strings.Contains(trimmed, "retryDelayMs") ||
 		strings.Contains(trimmed, "Too Many Requests") {
 		return true
 	}
