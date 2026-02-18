@@ -278,7 +278,7 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-if [ "$model" = "gemini-2.0-pro" ] || [ "$model" = "gemini-2.0-flash" ]; then
+if [ "$model" = "gemini-3-pro-preview" ] || [ "$model" = "gemini-3-flash-preview" ]; then
   # Use a string that contains QuotaError (to trigger retry) 
   echo "CRITICAL_ERROR: RetryableQuotaError - MODELCAPACITYEXHAUSTED_LIMIT_HIT"
   exit 1
@@ -296,7 +296,7 @@ echo "Success with $model"
 	cfg := config.GeminiCLIConfig{
 		Enabled:    true,
 		BinaryPath: tmpFile.Name(),
-		Model:      "gemini-2.0-pro",
+		Model:      "gemini-3-pro-preview",
 	}
 	p := NewGeminiCLIProvider(cfg, msgBus)
 
@@ -329,8 +329,8 @@ echo "Success with $model"
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if !strings.Contains(resp.Content, "Success with gemini-1.5-flash") {
-		t.Errorf("expected success with 1.5-flash fallback model, got: %q", resp.Content)
+	if !strings.Contains(resp.Content, "Success with gemini-2.0-flash") {
+		t.Errorf("expected success with 2.0-flash fallback model, got: %q", resp.Content)
 	}
 
 	// Verify we got notifications
