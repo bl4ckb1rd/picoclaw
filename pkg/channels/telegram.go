@@ -135,6 +135,12 @@ func (c *TelegramChannel) Stop(ctx context.Context) error {
 }
 
 func (c *TelegramChannel) Send(ctx context.Context, msg bus.OutboundMessage) error {
+	logger.InfoCF("telegram", "Sending message", map[string]interface{}{
+		"chat_id":     msg.ChatID,
+		"content_len": len(msg.Content),
+		"is_thought":  msg.Metadata != nil && msg.Metadata["is_thought"] == "true",
+	})
+
 	if !c.IsRunning() {
 		return fmt.Errorf("telegram bot not running")
 	}
@@ -143,6 +149,11 @@ func (c *TelegramChannel) Send(ctx context.Context, msg bus.OutboundMessage) err
 	if err != nil {
 		return fmt.Errorf("invalid chat ID: %w", err)
 	}
+
+	logger.DebugCF("telegram", "Parsed chat and thread", map[string]interface{}{
+		"chat_id":   chatID,
+		"thread_id": threadID,
+	})
 
 	// Stop thinking animation
 	if stop, ok := c.stopThinking.Load(msg.ChatID); ok {
@@ -179,12 +190,14 @@ func (c *TelegramChannel) Send(ctx context.Context, msg bus.OutboundMessage) err
 				editMsg.ParseMode = telego.ModeHTML
 
 				if _, err = c.bot.EditMessageText(ctx, editMsg); err == nil {
+					logger.DebugCF("telegram", "Message edited successfully", map[string]interface{}{"msg_id": pID})
 					// If it was a thought update, we are done with this chunk
 					if isThought {
 						return nil
 					}
 					continue
 				}
+				logger.WarnCF("telegram", "Failed to edit message, falling back to send", map[string]interface{}{"error": err.Error()})
 				// Fallback to new message if edit fails
 			}
 		}
@@ -209,6 +222,8 @@ func (c *TelegramChannel) Send(ctx context.Context, msg bus.OutboundMessage) err
 				return err
 			}
 		}
+
+		logger.DebugCF("telegram", "Message sent successfully", map[string]interface{}{"msg_id": sentMsg.MessageID})
 
 		if isThought && i == 0 && sentMsg != nil {
 			c.placeholders.Store(msg.ChatID, sentMsg.MessageID)
